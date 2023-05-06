@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>聊天室</title>
+	<style>
+		body{
+			background-color: white;
+			font-size: 16px;
+			color: black;
+		}
+		input[type="text"]{
+			padding: 10px;
+			font-size: 16px;
+			border-radius: 5px;
+			border: none;
+			margin-bottom: 10px;
+			width: 300px;
+		}
+		input[type="password"]{
+			padding: 10px;
+			font-size: 16px;
+			border-radius: 5px;
+			border: none;
+			margin-bottom: 10px;
+			width: 200px;
+		}
+		input[type="submit"]{
+			padding: 10px 20px;
+			background-color: #333;
+			color: white;
+			border-radius: 5px;
+			border: none;
+			cursor: pointer;
+		}
+		.chat-box{
+			padding: 20px;
+			margin: auto;
+			max-width: 500px;
+			border-radius: 10px;
+			background-color: #eee;
+			box-shadow: 0px 0px 10px 2px rgba(0,0,0,0.3);
+			overflow-y: scroll;
+			height: 400px;
+		}
+		.chat-box p{
+			margin: 0px;
+			font-size: 16px;
+		}
+		.chat-box .sender{
+			color: #333;
+			font-weight: bold;
+		}
+		.chat-box .time{
+			color: gray;
+			font-size: 12px;
+			margin-left: 10px;
+		}
+		.user-list{
+			padding: 20px;
+			margin: auto;
+			max-width: 200px;
+			border-radius: 10px;
+			background-color: #eee;
+			box-shadow: 0px 0px 10px 2px rgba(0,0,0,0.3);
+			overflow-y: scroll;
+			height: 200px;
+			position: fixed;
+			right: 20px;
+			top: 80px;
+			display: none;
+		}
+		.user-list h3{
+			margin-top: 0px;
+		}
+		.user-list ul{
+			padding-left: 0px;
+			list-style: none;
+		}
+		.user-list li{
+			margin-bottom: 5px;
+		}
+        .emoji-button{
+            padding: 0px;
+            margin-left: 5px;
+            background-color: transparent;
+            border: none;
+            cursor: pointer;
+        }
+        .emoji-button i{
+            font-size: 20px;
+        }
+        .chat-area .notification{
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            width: 25px;
+            height: 25px;
+            background-color: red;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 25px;
+            font-size: 14px;
+        }
+	</style>
+    <link rel="stylesheet" href="https://cdn.bootcss.com/emojionearea/3.4.2/emojionearea.min.css" />
+</head>
+<body>
+	<!-- 输入密码 -->
+	<div>
+		<label>请输入密码:</label>
+		<input type="password" id="password" name="password">
+		<button onclick="checkPassword()">进入</button>
+	</div>
+
+	<!-- 用户名 -->
+	<div id="usernameArea" style="display: none;">
+		<label>用户名:</label>
+		<input type="text" id="username" name="username"><br/>
+		<button onclick="enterChatRoom()">进入聊天室</button>
+	</div>
+
+	<!-- 聊天界面 -->
+	<div id="chatArea" style="display: none;">
+		<div class="chat-box" id="chatBox"></div>
+        <div class="chat-area">
+            <form onsubmit="sendMessage(); return false;">
+                <label>消息:</label>
+                <div>
+                    <input type="text" id="message" name="message" class="emojionearea"></input>
+                    <button type="button" class="emoji-button" onclick="toggleEmojiPicker()"><i class="em em-smiley"></i></button>
+                </div>
+                <input type="submit" value="发送">
+                <input type="button" value="用户列表" onclick="showUserList()">
+            </form>
+        </div>
+	</div>
+
+	<!-- 用户列表 -->
+	<div class="user-list" id="userList">
+		<h3>在线用户</h3>
+		<ul id="userUl"></ul>
+	</div>
+
+	<script src="https://cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+	<script src="https://cdn.bootcss.com/emojionearea/3.4.2/emojionearea.min.js"></script>
+    <script src="https://cdn.bootcss.com/socket.io/1.7.4/socket.io.js"></script>
+	<script>
+		var username = "";
+        var socket = io("http://localhost:3000");
+        var unreadCount = 0;
+
+		// 确认密码
+		function checkPassword(){
+			var password = document.getElementById("password").value;
+			if(password == "1122334455667788"){
+				document.getElementById("usernameArea").style.display = "block";
+				document.getElementById("password").value = "";
+			}else{
+				alert("密码错误!");
+			}
+		}
+
+		// 进入聊天室
+		function enterChatRoom(){
+			username = document.getElementById("username").value;
+			if(username == ""){
+				alert("请输入用户名!");
+				return;
+			}
+            socket.emit("join", username);
+			document.getElementById("usernameArea").style.display = "none";
+			document.getElementById("chatArea").style.display = "block";
+			addUserToList(username);
+            $(".emojionearea").emojioneArea({
+                pickerPosition: "bottom",
+                tones: false,
+                autocomplete: false,
+                events: {
+                    keyup: function (editor, event) {
+                        if (event.keyCode === 13 && !event.shiftKey) {
+                            event.preventDefault();
+                            sendMessage();
+                        }
+                    }
+                }
+            });
+		}
+
+		// 发送消息
+		function sendMessage(){
+			var message = $(".emojionearea").val();
+			if(message == ""){
+				alert("消息不能为空!");
+				return;
+			}
+            socket.emit("chat", {"username": username, "message": message});
+
+			var date = new Date();
+			var time = date.getHours() + ":" + date.getMinutes() + ":" + date.getSeconds();
+			var chatBox = document.getElementById("chatBox");
+			var p = document.createElement("p");
+			p.innerHTML = "<span class='sender'>" + username + ":</span> " + message + "<span class='time'>" + time + "</span>";
+			chatBox.appendChild(p);
+			chatBox.scrollTop = chatBox.scrollHeight;
+
+			document.getElementById("message").value = "";
+            $(".emojionearea").val("");
+            $(".emojionearea")[0].emojioneArea.setText("");
+		}
+
+        // 接收消息
+        socket.on("chat", function(data){
+            var sender = data.username;
+            var message = data.message;
+
+            var date = new Date();
+			var time = date.getHours() + ":" + date.getMinutes() + ":" + date.getSeconds();
+			var chatBox = document.getElementById("chatBox");
+			var p = document.createElement("p");
+			p.innerHTML = "<span class='sender'>" + sender + ":</span> " + message + "<span class='time'>" + time + "</span>";
+			chatBox.appendChild(p);
+			chatBox.scrollTop = chatBox.scrollHeight;
+
+            if(sender !== username){
+                addNotification();
+            }
+        });
+
+        // 接收系统消息
+        socket.on("system", function(data){
+            var type = data.type;
+            var message = data.message;
+
+            var chatBox = document.getElementById("chatBox");
+            var p = document.createElement("p");
+
+            if(type === "join"){
+                p.innerHTML = "<span class='notice'>" + message + "</span>";
+            }else if(type === "leave"){
+                p.innerHTML = "<span class='notice'>" + message + "</span>";
+                deleteUserFromList(data.username);
+            }
+
+            chatBox.appendChild(p);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        });
+
+		// 显示用户列表
+		function showUserList(){
+			var userList = document.getElementById("userList");
+			if(userList.style.display == "none"){
+				userList.style.display = "block";
+			}else{
+				userList.style.display = "none";
+			}
+		}
+
+		// 添加用户到列表
+		function addUserToList(name){
+			var userUl = document.getElementById("userUl");
+			var li = document.createElement("li");
+			li.innerHTML = name;
+			userUl.appendChild(li);
+		}
+
+        // 删除用户从列表
+        function deleteUserFromList(name){
+            var userUl = document.getElementById("userUl");
+            var lis = userUl.getElementsByTagName("li");
+            for(var i = 0; i < lis.length; i++){
+                if(lis[i].innerHTML === name){
+                    lis[i].parentNode.removeChild(lis[i]);
+                    break;
+                }
+            }
+        }
+
+        // 切换 emoji picker 的状态
+        function toggleEmojiPicker(){
+            $(".emojionearea-button-open").click();
+        }
+
+        // 添加未读消息提醒
+        function addNotification(){
+            unreadCount += 1;
+            var chatArea = document.getElementById("chatArea");
+            var notification = document.createElement("div");
+            notification.className = "notification";
+            notification.innerHTML = unreadCount;
+            chatArea.appendChild(notification);
+        }
+
+	</script>
+</body>
+</html>
